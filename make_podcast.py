@@ -5,6 +5,7 @@ import datetime
 import requests
 import textwrap
 import tempfile
+import argparse
 import traceback
 import subprocess
 from pathlib import Path
@@ -269,7 +270,7 @@ def generate_conversational_episode(date: datetime.date, papers: List[Dict[str, 
     paper_block = build_paper_list_for_prompt(papers)
 
     prompt = f"""
-You are generating a concise, technically accurate podcast script for a particle physicist.
+You are generating a concise, technically accurate podcast script for a particle physicist audience.
 
 There are two hosts:
 - HostA: More structured and narrative. Opens the show, announces each paper, keeps things moving.
@@ -297,6 +298,7 @@ Requirements for the script:
 
 Formatting requirements (very important):
 - Use plain text.
+- Uncommon words should be spelled for pronunciation, e.g. "arXiv" should be written as "archive" and "axion" should be written as "axe-eon"
 - Use labels "HostA:" and "HostB:" at the start of each spoken line.
 - Group sections with headers:
     [INTRO]
@@ -630,14 +632,16 @@ def main(target_date: datetime.date = None) -> None:
         episode_script = generate_static_script(target_date, new_papers)
 
     # Step 2: Save text script
-    script_filename = f"{target_date.isoformat()}-axion-neutrino-conversation.txt"
+    suffix = "-genAI" if USE_AI else ""
+    script_filename = f"{target_date.isoformat()}-axion-neutrino-conversation{suffix}.txt"
     script_path = os.path.join(OUTPUT_DIR, script_filename)
+
     with open(script_path, "w", encoding="utf-8") as f:
         f.write(episode_script)
     print(f"Wrote conversational script to {script_path}")
 
     # Step 3: Generate two-voice audio
-    audio_filename = f"{target_date.isoformat()}-axion-neutrino-conversation.mp3"
+    audio_filename = f"{target_date.isoformat()}-axion-neutrino-conversation{suffix}.mp3"
     audio_path = os.path.join(OUTPUT_DIR, audio_filename)
     synthesize_speech(episode_script, audio_path)
 
@@ -650,7 +654,7 @@ def main(target_date: datetime.date = None) -> None:
     feed_path = os.path.join(OUTPUT_DIR, FEED_FILENAME)
     tree = load_or_init_feed(feed_path)
 
-    episode_title = f"Axion and Neutrino arXiv Digest – {target_date.isoformat()}"
+    episode_title = f"Axion and Neutrino arXiv Digest - {target_date.isoformat()}"
     episode_desc = f"Conversational two-voice daily digest of axion and neutrino related arXiv papers for {target_date.isoformat()}."
     guid = f"axion-neutrino-{target_date.isoformat()}"
     pub_date = datetime.datetime.combine(target_date, datetime.time(8, 0))
@@ -678,20 +682,35 @@ def main(target_date: datetime.date = None) -> None:
     # Step 6: Send email with text script
     subject = EMAIL_SUBJECT_PREFIX + target_date.isoformat()
     send_email(subject, episode_script)
+    return target_date
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Axion/Neutrino arXiv Podcast Digest")
+    parser.add_argument("date", nargs="?", type=str, help="Target date (YYYY-MM-DD), defaults to yesterday UTC")
+    parser.add_argument("--genAI", action="store_true", help="Force USE_AI to True (use generative AI for script)")
+    args = parser.parse_args()
+
+    # Set USE_AI based on flag
+    if args.genAI:
+        USE_AI = True
+
+    # Parse date argument
+    if args.date:
+        try:
+            d = datetime.datetime.strptime(args.date, "%Y-%m-%d").date()
+        except ValueError:
+            print(f"Invalid date format: {args.date}. Please use YYYY-MM-DD.")
+            sys.exit(1)
+    else:
+        d = None
+
     try:
-        if len(sys.argv) > 1:
-            d = datetime.datetime.strptime(sys.argv[1], "%Y-%m-%d").date()
-            main(d)
-        else:
-            main()
+        today_str = main(d)
     except Exception as e:
         print("Fatal error:", e)
         traceback.print_exc()
 
     # Auto commit and push
-    today_str = datetime.date.today().isoformat()
     commit_message = f"Update arxiv digest for {today_str}"
     git_commit_and_push(GIT_REPO_DIR, commit_message)
