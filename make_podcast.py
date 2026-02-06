@@ -18,36 +18,36 @@ from typing import List, Dict, Any, Tuple
 # 1. Date handling: default to "yesterday" UTC
 DEFAULT_DAYS_OFFSET = 1
 
-# 2. Output folder: OneDrive-LLNL on Mac
-GIT_REPO_DIR = "."  # change this to whereever you want your files to be saved!
-OUTPUT_DIR = GIT_REPO_DIR  # write directly into the repo
+# 2. Output folder
+GIT_REPO_DIR = Path("/Users/ghosh8/Documents/GitHub/arxiv-podcast")
+OUTPUT_DIR = Path(GIT_REPO_DIR)  # write directly into the repo
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 3. RSS feed metadata (local index)
-FEED_TITLE = "Axion and Neutrino arXiv Daily Digest"
-FEED_DESCRIPTION = "Daily conversational summaries of arXiv papers mentioning axion or neutrino."
-BASE_AUDIO_URL = "https://sumitaghosh.github.io/arxiv-podcast"  # change this to your own repository!
-FEED_LINK = f"{BASE_AUDIO_URL}/feed.xml"
+FEED_TITLE = "Axion and Neutrino Physics arXiv Daily Digest"
+FEED_DESCRIPTION = "Daily conversational summaries of arXiv papers mentioning axions and/or neutrinos."
+FEED_LINK = "https://sumitaghosh.github.io/arxiv-podcast/feed.xml"
+BASE_AUDIO_URL = "https://sumitaghosh.github.io/arxiv-podcast"
 FEED_FILENAME = "feed.xml"
 
 # 4. Generative AI configuration (OpenAI-compatible)
-USE_AI = False  # Boolean to use Generative AI to write the script; otherwise the voices on your computer will just read the abstracts!
-AI_BASE_URL = None  # put a string here for what the URL of your model is
-AI_MODEL = None  # put a string here for the name of your model (like the type of gpt)
-AI_API_KEY = None  # put your API key here!
+USE_AI = False
+AI_BASE_URL = None
+AI_MODEL = "gpt-4.1-mini"
+AI_API_KEY = None
 
 # 5. macOS TTS configuration (two voices)
 TTS_MODE = "mac_say_ffmpeg"  # two-voice pipeline
-MAC_VOICE_HOSTA = "Evan (Enhanced)"  # Pick your favorite for announcing the voices
-MAC_VOICE_HOSTB = "Matilda (Enhanced)"  # Pick your favorite for reading the abstracts!
+MAC_VOICE_HOSTA = "Evan (Enhanced)"  # announcer
+MAC_VOICE_HOSTB = "Matilda (Premium)"  # reads the abstracts
 
 # 6. ffmpeg configuration
 FFMPEG_BIN = "ffmpeg"           # assume on PATH; or set full path
 
 # 7. Email configuration
-ENABLE_EMAIL = False  # Boolean to email the script to yourself
-EMAIL_FROM = "username@domain.end"  # your LLNL email
-EMAIL_TO = ["username@domain.end"]  # list of recipients
+ENABLE_EMAIL = False
+EMAIL_FROM = "ghosh8@llnl.gov"  # your email address
+EMAIL_TO = ["ghosh8@llnl.gov"]  # list of recipients
 EMAIL_SUBJECT_PREFIX = "[Arxiv Axion/Neutrino Digest] "
 
 
@@ -267,7 +267,7 @@ There are two hosts:
 - HostA: More structured and narrative. Opens the show, announces each paper, keeps things moving.
 - HostB: Provides more technical details and context, focusing on experiment/theory, results, and significance.
 
-Audience: HEP/astro postdocs. Assume they know the basics of axion and neutrino physics, cosmology, and standard acronyms.
+Audience: HEP/nuclear postdocs. Assume they know the basics of axion and neutrino physics, quantum information, and standard acronyms.
 
 Topic date: {date.isoformat()}
 
@@ -296,7 +296,6 @@ Formatting requirements (very important):
     [PAPER 2]
     ...
     [OUTRO]
-- Under each [PAPER N] section, always mention the arXiv ID explicitly once.
 - Each spoken line must be on a single line, for example:
     HostA: Welcome to the show ...
     HostB: Today we are looking at ...
@@ -307,7 +306,7 @@ Do NOT include any markdown, bullet points, or additional headings beyond [INTRO
     messages = [
         {
             "role": "system",
-            "content": "You are a concise, technically accurate host of a high-energy physics and cosmology podcast.",
+            "content": "You are a concise, technically accurate host of a high-energy particle physics podcast.",
         },
         {"role": "user", "content": prompt.strip()},
     ]
@@ -323,7 +322,7 @@ def generate_static_script(date: str, papers: List[Dict[str, Any]]) -> str:
     lines = []
 
     # Intro from Host A
-    lines.append("HOST A: Welcome to the Axion and Neutrino arXiv Daily Digest.")
+    lines.append("HOST A: Welcome to the Aksion and Neutrino archive Daily Digest.")  # fix pronunciation
     lines.append(f"HOST A: This episode covers papers posted on {date}.")
     lines.append("HOST A: In this edition, I'll read the titles,")
     lines.append("HOST A: and then Host B will read the full abstracts for each paper.")
@@ -365,7 +364,7 @@ def generate_static_script(date: str, papers: List[Dict[str, Any]]) -> str:
         lines.append("")  # spacing
 
     # Outro from Host A
-    lines.append("HOST A: That concludes today's Axion and Neutrino arXiv Daily Digest.")
+    lines.append("HOST A: That concludes today's Aksion and Neutrino archive Daily Digest.")
     lines.append("HOST A: Thanks for listening, and see you next time.")
 
     return "\n".join(lines)
@@ -447,12 +446,14 @@ def concatenate_aiff_with_ffmpeg(aiff_files: List[str], output_path: str) -> Non
             "0",
             "-i",
             list_path,
-            "-acodec",
-            "libmp3lame",
-            "-q:a",
-            "4",
+            # Standard podcast voice settings
+            "-ar", "44100",          # resample to 44.1 kHz
+            "-ac", "1",              # mono is fine for speech
+            "-codec:a", "libmp3lame",
+            "-b:a", "192k",          # 192 kbps CBR for higher quality
             output_path,
         ]
+        print("[DEBUG] ffmpeg concat command:", " ".join(str(x) for x in cmd))
         subprocess.run(cmd, check=True)
     finally:
         try:
