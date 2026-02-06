@@ -19,9 +19,9 @@ from typing import List, Dict, Any, Tuple
 DEFAULT_DAYS_OFFSET = 1
 
 # 2. Output folder
-GIT_REPO_DIR = Path("/Users/ghosh8/Documents/GitHub/arxiv-podcast")  # change this to whereever you want your files to be saved!
+GIT_REPO_DIR = Path("/Users/ghosh8/Documents/GitHub/arxiv-podcast")
+OUTPUT_DIR = Path(GIT_REPO_DIR)  # change this to wherever you want your files to be saved!
 OUTPUT_DIR = GIT_REPO_DIR  # write directly into the repo
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 3. RSS feed metadata (local index)
 FEED_TITLE = "Axion and Neutrino Physics arXiv Daily Digest"
@@ -32,17 +32,18 @@ FEED_FILENAME = "feed.xml"
 
 # 4. Generative AI configuration (OpenAI-compatible)
 USE_AI = False  # Boolean to use Generative AI to write the script; otherwise the voices on your computer will just read the abstracts!
-AI_BASE_URL = None  # put a string here for what the URL of your model is
+AI_BASE_URL = None
 AI_MODEL = "gpt-4.1-mini"
 AI_API_KEY = None  # put your API key here!
 
-# 5. macOS TTS configuration (two voices)
+# 5. macOS TTS configuration (two voices; choose from the output of "say -v '?'" on the command line)
 TTS_MODE = "mac_say_ffmpeg"  # two-voice pipeline
 MAC_VOICE_HOSTA = "Evan (Enhanced)"  # Pick your favorite for announcing the voices
-MAC_VOICE_HOSTB = "Matilda (Premium)"  # Pick your favorite for reading the abstracts!
+MAC_VOICE_HOSTB = "Fiona (Enhanced)"  # Pick your favorite for reading the abstracts!
+# I like these two, and also Matilda (Premium) and Moira (Enhanced)
 
 # 6. ffmpeg configuration
-FFMPEG_BIN = "ffmpeg"           # assume on PATH; or set full path
+FFMPEG_BIN = "ffmpeg"  # assume on PATH; or set full path
 
 # 7. Email configuration
 ENABLE_EMAIL = False  # Boolean to email the script to yourself
@@ -58,12 +59,19 @@ EMAIL_SUBJECT_PREFIX = "[Arxiv Axion/Neutrino Digest] "
 
 def git_commit_and_push(repo_dir: Path, commit_message: str) -> None:
     """
-    Run git add, commit, and push in the given repo directory.
+    Run git pull, add, commit, and push in the given repo directory.
     If there is nothing to commit, it will print a warning and skip.
     """
     try:
         # Ensure we are in the repo directory
         repo_dir = repo_dir.resolve()
+
+        # Pull
+        subprocess.run(
+            ["git", "-C", str(repo_dir), "pull"],
+            check=True,
+        )
+        print("[Git] Pulled from remote.")
 
         # git status to confirm it is a repo
         subprocess.run(
@@ -322,50 +330,38 @@ def generate_static_script(date: str, papers: List[Dict[str, Any]]) -> str:
     lines = []
 
     # Intro from Host A
-    lines.append("HOST A: Welcome to the Aksion and Neutrino archive Daily Digest.")  # fix pronunciation
-    lines.append(f"HOST A: This episode covers papers posted on {date}.")
-    lines.append("HOST A: In this edition, I'll read the titles,")
-    lines.append("HOST A: and then Host B will read the full abstracts for each paper.")
-    lines.append("")  # blank line
+    lines.append("HostA: Welcome to the Axe-eon and Neutrino archive Daily Digest.")
+    lines.append(f"HostA: This episode covers papers posted on {date}.")
+    lines.append("HostA: In this edition, I will read the titles,")
+    lines.append("HostB: and then I will read the full abstracts for each paper.")
+    lines.append("")
 
-    if not papers:
-        lines.append("HOST A: There were no new axion or neutrino papers found today.")
-        lines.append("HOST A: Thanks for listening, and see you next time.")
-        return "\n".join(lines)
-
-    # Titles section by Host A
-    lines.append("HOST A: Here are today's papers.")
+    lines.append("HostA: Here are today's papers.")
     for i, paper in enumerate(papers, start=1):
-        title = paper["title"].strip().replace("\n", " ")
-        # Optional: shorten author list if long
+        lines.append(f"HostB: Paper {i}")
+        title = paper["title"].strip().replace("\n", " ").replace("$", "")
         authors = paper.get("authors", "")
+        abstract = paper["summary"].strip().replace("$", "")
+
         if isinstance(authors, list):
             authors_str = ", ".join(authors)
         else:
             authors_str = str(authors)
 
-        lines.append(f"HOST A: Paper {i}: {title}.")
+        # Titles section by Host A
+        lines.append(f"HostA: Titled {title}.")
         if authors_str:
-            lines.append(f"HOST A: Authors: {authors_str}.")
-        lines.append("")  # spacing
+            lines.append(f"HostA: By {authors_str}.")
+        lines.append("")
 
-    lines.append("HOST A: Now, Host B will read the full abstracts for each paper.")
-    lines.append("")  # spacing
-
-    # Abstracts section by Host B
-    for i, paper in enumerate(papers, start=1):
-        title = paper["title"].strip().replace("\n", " ")
-        abstract = paper["summary"].strip()
-
-        lines.append(f"HOST B: Abstract for paper {i}, titled {title}.")
-        # Normalize whitespace in abstract so TTS behaves nicely
+        # Abstracts section by Host B
         abstract_clean = " ".join(abstract.split())
-        lines.append(f"HOST B: {abstract_clean}")
-        lines.append("")  # spacing
+        lines.append(f"HostB: {abstract_clean}")
+        lines.append("")
 
     # Outro from Host A
-    lines.append("HOST A: That concludes today's Aksion and Neutrino archive Daily Digest.")
-    lines.append("HOST A: Thanks for listening, and see you next time.")
+    lines.append("HostA: That concludes today's Axe-eon and Neutrino archive Daily Digest.")
+    lines.append("HostA: Thanks for listening, and see you next-time.")
 
     return "\n".join(lines)
 
