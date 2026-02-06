@@ -19,33 +19,33 @@ from typing import List, Dict, Any, Tuple
 DEFAULT_DAYS_OFFSET = 1
 
 # 2. Output folder
-GIT_REPO_DIR = Path("/Users/ghosh8/Documents/GitHub/arxiv-podcast")
-OUTPUT_DIR = Path(GIT_REPO_DIR)  # write directly into the repo
+GIT_REPO_DIR = Path("/Users/ghosh8/Documents/GitHub/arxiv-podcast")  # change this to whereever you want your files to be saved!
+OUTPUT_DIR = GIT_REPO_DIR  # write directly into the repo
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 # 3. RSS feed metadata (local index)
 FEED_TITLE = "Axion and Neutrino Physics arXiv Daily Digest"
 FEED_DESCRIPTION = "Daily conversational summaries of arXiv papers mentioning axions and/or neutrinos."
-FEED_LINK = "https://sumitaghosh.github.io/arxiv-podcast/feed.xml"
-BASE_AUDIO_URL = "https://sumitaghosh.github.io/arxiv-podcast"
+BASE_AUDIO_URL = "https://sumitaghosh.github.io/arxiv-podcast"  # change this to your own repository!
+FEED_LINK = f"{BASE_AUDIO_URL}/feed.xml"
 FEED_FILENAME = "feed.xml"
 
 # 4. Generative AI configuration (OpenAI-compatible)
-USE_AI = False
-AI_BASE_URL = None
+USE_AI = False  # Boolean to use Generative AI to write the script; otherwise the voices on your computer will just read the abstracts!
+AI_BASE_URL = None  # put a string here for what the URL of your model is
 AI_MODEL = "gpt-4.1-mini"
-AI_API_KEY = None
+AI_API_KEY = None  # put your API key here!
 
 # 5. macOS TTS configuration (two voices)
 TTS_MODE = "mac_say_ffmpeg"  # two-voice pipeline
-MAC_VOICE_HOSTA = "Evan (Enhanced)"  # announcer
-MAC_VOICE_HOSTB = "Matilda (Premium)"  # reads the abstracts
+MAC_VOICE_HOSTA = "Evan (Enhanced)"  # Pick your favorite for announcing the voices
+MAC_VOICE_HOSTB = "Matilda (Premium)"  # Pick your favorite for reading the abstracts!
 
 # 6. ffmpeg configuration
 FFMPEG_BIN = "ffmpeg"           # assume on PATH; or set full path
 
 # 7. Email configuration
-ENABLE_EMAIL = False
+ENABLE_EMAIL = False  # Boolean to email the script to yourself
 EMAIL_FROM = "ghosh8@llnl.gov"  # your email address
 EMAIL_TO = ["ghosh8@llnl.gov"]  # list of recipients
 EMAIL_SUBJECT_PREFIX = "[Arxiv Axion/Neutrino Digest] "
