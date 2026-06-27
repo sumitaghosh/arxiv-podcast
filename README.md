@@ -46,9 +46,9 @@ That's it if you're happy using macOS voices! The script defaults to `TTS_MODE =
 
 ## Optional: Kokoro TTS (free, local, better voices)
 
-If you want better-sounding voices, keep reading. [Kokoro-82M](https://github.com/hexgrad/kokoro) is a free, open-source TTS model that runs entirely on your machine — no API key, no internet connection after the first download (~327MB), and noticeably more natural than the built-in macOS voices.
+If you want better-sounding voices, keep reading. [Kokoro-82M](https://github.com/hexgrad/kokoro) is a free, ethically-trained open-source TTS ~327MB model that runs entirely on your machine and sounds noticeably more natural than the built-in macOS voices.
 
-To use it, make sure `TTS_MODE = "kokoro"` in the CONFIGURATION section (this is already the default), then do the following:
+To use it, make sure `TTS_MODE = "kokoro"` in the CONFIGURATION section (the default), then do the following:
 
 ### 1. Install the system dependency
 
