@@ -35,11 +35,20 @@ FEED_FILENAME = "feed.xml"
 USE_AI = False  # Boolean to use Generative AI to write the script; otherwise the voices on your computer will just read the abstracts!
 AI_BASE_URL = None
 AI_MODEL = "gpt-4.1-mini"
-AI_API_KEY = None  # put your API key here!
+AI_API_KEY = os.environ.get("AI_API_KEY", None)  # set via environment variable, or paste your key here
 
-# 5. macOS TTS configuration (two voices; choose from the output of "say -v '?'" on the command line)
-TTS_MODE = "mac_say_ffmpeg"  # two-voice pipeline
-MAC_VOICE_HOSTA = "Evan (Enhanced)"  # Pick your favorite for announcing the voices
+# 5. TTS configuration
+TTS_MODE = "kokoro"  # "kokoro" for free local TTS, or "mac_say_ffmpeg" for macOS built-in voices
+
+# Kokoro TTS voices (used when TTS_MODE = "kokoro")
+# See README for full list of available voices
+KOKORO_VOICE_HOSTA = "am_adam"   # American male
+KOKORO_VOICE_HOSTB = "af_bella"  # American female
+KOKORO_LANG_CODE = "a"           # 'a' = American English, 'b' = British English
+
+# macOS TTS voices (used when TTS_MODE = "mac_say_ffmpeg")
+# Choose from the output of "say -v '?'" on the command line
+MAC_VOICE_HOSTA = "Evan (Enhanced)"   # Pick your favorite for announcing the papers
 MAC_VOICE_HOSTB = "Fiona (Enhanced)"  # Pick your favorite for reading the abstracts!
 # I like these two, and also Matilda (Premium) and Moira (Enhanced)
 
@@ -397,14 +406,82 @@ def parse_script_to_utterances(script: str) -> List[Tuple[str, str]]:
 
 
 # -------------------------------
-# STEP 4: macOS TTS with two voices + ffmpeg
+# STEP 4a: Kokoro TTS (free, local)
+# -------------------------------
+
+def synthesize_clip_with_kokoro(text: str, voice: str, output_wav: str, pipeline) -> None:
+    """Use Kokoro to synthesize text to WAV."""
+    import soundfile as sf
+    import numpy as np
+
+    audio_chunks = []
+    for _, _, audio in pipeline(text, voice=voice, speed=1.0):
+        audio_chunks.append(audio)
+
+    if audio_chunks:
+        combined = np.concatenate(audio_chunks)
+        sf.write(output_wav, combined, 24000)
+    else:
+        sf.write(output_wav, np.zeros(24000, dtype=np.float32), 24000)
+
+
+def synthesize_two_voice_episode_kokoro(script: str, output_path: str) -> None:
+    """
+    Two-voice synthesis with Kokoro:
+    - Parse script into utterances.
+    - For each utterance, synthesize a WAV clip with HostA/HostB voice.
+    - Concatenate clips with ffmpeg into a single MP3.
+    """
+    try:
+        from kokoro import KPipeline
+    except ImportError:
+        print("[TTS] Kokoro not installed. Run: pip install kokoro soundfile")
+        raise
+
+    utterances = parse_script_to_utterances(script)
+    if not utterances:
+        print("[TTS] No utterances found in script; creating empty audio file.")
+        with open(output_path, "wb") as f:
+            f.write(b"")
+        return
+
+    print(f"[TTS] Loading Kokoro pipeline (lang={KOKORO_LANG_CODE})...")
+    pipeline = KPipeline(lang_code=KOKORO_LANG_CODE)
+
+    print(f"[TTS] Synthesizing {len(utterances)} utterances with Kokoro...")
+    temp_dir = tempfile.mkdtemp(prefix="arxiv_podcast_tts_")
+    wav_files: List[str] = []
+
+    try:
+        for idx, (speaker, text) in enumerate(utterances):
+            voice = KOKORO_VOICE_HOSTA if speaker == "HostA" else KOKORO_VOICE_HOSTB
+            clip_path = os.path.join(temp_dir, f"clip_{idx:04d}.wav")
+            print(f"[TTS] {speaker} ({voice}) -> {clip_path}")
+            synthesize_clip_with_kokoro(text, voice, clip_path, pipeline)
+            wav_files.append(clip_path)
+
+        concatenate_audio_with_ffmpeg(wav_files, output_path)
+        print(f"[TTS] Final two-voice episode at {output_path}")
+    finally:
+        for f in wav_files:
+            try:
+                os.remove(f)
+            except OSError:
+                pass
+        try:
+            os.rmdir(temp_dir)
+        except OSError:
+            pass
+
+
+# -------------------------------
+# STEP 4b: macOS TTS with two voices + ffmpeg
 # -------------------------------
 
 def synthesize_clip_with_say(text: str, voice: str, output_aiff: str) -> None:
     """
     Use macOS `say` to synthesize text to AIFF.
     """
-    # Write text to a temporary file so we do not have to deal with shell quoting
     with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as tf:
         tf.write(text)
         tf_path = tf.name
@@ -419,50 +496,9 @@ def synthesize_clip_with_say(text: str, voice: str, output_aiff: str) -> None:
             pass
 
 
-def concatenate_aiff_with_ffmpeg(aiff_files: List[str], output_path: str) -> None:
+def synthesize_two_voice_episode_mac(script: str, output_path: str) -> None:
     """
-    Use ffmpeg to concatenate multiple AIFF files into a single MP3.
-    We use the 'concat' demuxer with a temporary list file.
-    """
-    if not aiff_files:
-        raise ValueError("No AIFF files to concatenate.")
-
-    # Create a temporary file listing all the AIFF files
-    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as lf:
-        for f in aiff_files:
-            lf.write(f"file '{f}'\n")
-        list_path = lf.name
-
-    try:
-        # ffmpeg -f concat -safe 0 -i list.txt -acodec libmp3lame -q:a 4 output.mp3
-        cmd = [
-            FFMPEG_BIN,
-            "-y",
-            "-f",
-            "concat",
-            "-safe",
-            "0",
-            "-i",
-            list_path,
-            # Standard podcast voice settings
-            "-ar", "44100",          # resample to 44.1 kHz
-            "-ac", "1",              # mono is fine for speech
-            "-codec:a", "libmp3lame",
-            "-b:a", "192k",          # 192 kbps CBR for higher quality
-            output_path,
-        ]
-        print("[DEBUG] ffmpeg concat command:", " ".join(str(x) for x in cmd))
-        subprocess.run(cmd, check=True)
-    finally:
-        try:
-            os.remove(list_path)
-        except OSError:
-            pass
-
-
-def synthesize_two_voice_episode(script: str, output_path: str) -> None:
-    """
-    Two-voice synthesis:
+    Two-voice synthesis with macOS `say`:
     - Parse script into utterances.
     - For each utterance, synthesize a small AIFF clip with HostA/HostB voice.
     - Concatenate clips with ffmpeg into a single MP3.
@@ -474,7 +510,7 @@ def synthesize_two_voice_episode(script: str, output_path: str) -> None:
             f.write(b"")
         return
 
-    print(f"[TTS] Synthesizing {len(utterances)} utterances with two voices...")
+    print(f"[TTS] Synthesizing {len(utterances)} utterances with macOS say...")
 
     temp_dir = tempfile.mkdtemp(prefix="arxiv_podcast_tts_")
     aiff_files: List[str] = []
@@ -487,11 +523,9 @@ def synthesize_two_voice_episode(script: str, output_path: str) -> None:
             synthesize_clip_with_say(text, voice, clip_path)
             aiff_files.append(clip_path)
 
-        # Concatenate to final MP3
-        concatenate_aiff_with_ffmpeg(aiff_files, output_path)
+        concatenate_audio_with_ffmpeg(aiff_files, output_path)
         print(f"[TTS] Final two-voice episode at {output_path}")
     finally:
-        # Clean up temporary AIFF files and directory
         for f in aiff_files:
             try:
                 os.remove(f)
@@ -503,9 +537,49 @@ def synthesize_two_voice_episode(script: str, output_path: str) -> None:
             pass
 
 
+# -------------------------------
+# STEP 4c: ffmpeg concatenation (shared)
+# -------------------------------
+
+def concatenate_audio_with_ffmpeg(audio_files: List[str], output_path: str) -> None:
+    """
+    Use ffmpeg to concatenate multiple audio files (AIFF or WAV) into a single MP3.
+    """
+    if not audio_files:
+        raise ValueError("No audio files to concatenate.")
+
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False) as lf:
+        for f in audio_files:
+            lf.write(f"file '{f}'\n")
+        list_path = lf.name
+
+    try:
+        cmd = [
+            FFMPEG_BIN,
+            "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", list_path,
+            "-ar", "44100",           # resample to 44.1 kHz
+            "-ac", "1",               # mono is fine for speech
+            "-codec:a", "libmp3lame",
+            "-b:a", "192k",           # 192 kbps CBR for higher quality
+            output_path,
+        ]
+        print("[DEBUG] ffmpeg concat command:", " ".join(str(x) for x in cmd))
+        subprocess.run(cmd, check=True)
+    finally:
+        try:
+            os.remove(list_path)
+        except OSError:
+            pass
+
+
 def synthesize_speech(script: str, output_path: str) -> None:
-    if TTS_MODE == "mac_say_ffmpeg":
-        synthesize_two_voice_episode(script, output_path)
+    if TTS_MODE == "kokoro":
+        synthesize_two_voice_episode_kokoro(script, output_path)
+    elif TTS_MODE == "mac_say_ffmpeg":
+        synthesize_two_voice_episode_mac(script, output_path)
     else:
         print(f"[TTS] Unknown TTS_MODE '{TTS_MODE}', creating empty file.")
         with open(output_path, "wb") as f:
