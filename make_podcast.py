@@ -33,9 +33,10 @@ FEED_FILENAME = "feed.xml"
 
 # 4. Generative AI configuration (OpenAI-compatible)
 USE_AI = False  # Boolean to use Generative AI to write the script; otherwise the voices on your computer will just read the abstracts!
-AI_BASE_URL = None
-AI_MODEL = "gpt-4.1-mini"
+AI_BASE_URL = os.environ.get("AI_BASE_URL", None)
+AI_MODEL = os.environ.get("AI_MODEL", "gpt-4.1-mini")
 AI_API_KEY = os.environ.get("AI_API_KEY", None)  # set via environment variable, or paste your key here
+AI_TEMPERATURE = float(os.environ.get("AI_TEMPERATURE", "0.4"))
 
 # 5. TTS configuration
 TTS_MODE = "kokoro"  # "kokoro" for free local TTS, or "mac_say_ffmpeg" for macOS built-in voices
@@ -224,10 +225,16 @@ def query_arxiv_for_date(date: datetime.date) -> List[Dict[str, Any]]:
 # STEP 2: Episode script
 # -------------------------------
 
-def call_api(messages: List[Dict[str, str]], temperature: float = 0.4, max_tokens: int = 2000) -> str:
+def call_api(messages: List[Dict[str, str]], temperature: float = None, max_tokens: int = 2000) -> str:
     """
     Call AI (OpenAI-compatible chat/completions).
     """
+    if not AI_API_KEY:
+        raise ValueError("AI_API_KEY is required when USE_AI is enabled.")
+    if not AI_BASE_URL:
+        raise ValueError("AI_BASE_URL is required when USE_AI is enabled.")
+    if temperature is None:
+        temperature = AI_TEMPERATURE
 
     headers = {
         "Authorization": f"Bearer {AI_API_KEY}",
@@ -701,6 +708,8 @@ def main(target_date: datetime.date = None) -> None:
         try:
             episode_script = generate_conversational_episode(target_date, new_papers)
         except Exception as e:
+            print(f"[AI] Error generating conversational script: {e}")
+            print("[AI] Falling back to static title/abstract script.")
             episode_script = generate_static_script(target_date, new_papers)
     else:
         episode_script = generate_static_script(target_date, new_papers)
